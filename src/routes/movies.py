@@ -1,19 +1,13 @@
-import math  # ✅ FIX: import math
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from src.database.session import get_db
-from src.database.models import MovieModel
-from src.schemas.movies import (  # ✅ FIX: import schemas
-    MovieListResponseSchema,
-    MovieDetailResponseSchema,
-)
+from database import get_db, MovieModel
+
 
 router = APIRouter()
 
 
-@router.get("/movies/", response_model=MovieListResponseSchema)
+@router.get("/movies/")
 def get_movies(
     page: int = Query(1, ge=1),
     per_page: int = Query(10, ge=1, le=20),
@@ -23,7 +17,8 @@ def get_movies(
     if total_items == 0:
         raise HTTPException(status_code=404, detail="No movies found.")
 
-    total_pages = math.ceil(total_items / per_page)
+    # ceil(total_items / per_page) without math
+    total_pages = (total_items + per_page - 1) // per_page
 
     offset = (page - 1) * per_page
     movies = (
@@ -37,19 +32,28 @@ def get_movies(
     if not movies:
         raise HTTPException(status_code=404, detail="No movies found.")
 
-    prev_page = (
-        f"/theater/movies/?page={page - 1}&per_page={per_page}"
-        if page > 1
-        else None
-    )
-    next_page = (
-        f"/theater/movies/?page={page + 1}&per_page={per_page}"
-        if page < total_pages
-        else None
-    )
+    prev_page = f"/theater/movies/?page={page - 1}&per_page={per_page}" if page > 1 else None
+    next_page = f"/theater/movies/?page={page + 1}&per_page={per_page}" if page < total_pages else None
 
     return {
-        "movies": movies,
+        "movies": [
+            {
+                "id": m.id,
+                "name": m.name,
+                "date": m.date,
+                "score": m.score,
+                "genre": m.genre,
+                "overview": m.overview,
+                "crew": m.crew,
+                "orig_title": m.orig_title,
+                "status": m.status,
+                "orig_lang": m.orig_lang,
+                "budget": m.budget,
+                "revenue": m.revenue,
+                "country": m.country,
+            }
+            for m in movies
+        ],
         "prev_page": prev_page,
         "next_page": next_page,
         "total_pages": total_pages,
@@ -57,12 +61,24 @@ def get_movies(
     }
 
 
-@router.get("/movies/{movie_id}/", response_model=MovieDetailResponseSchema)
+@router.get("/movies/{movie_id}/")
 def get_movie_by_id(movie_id: int, db: Session = Depends(get_db)):
     movie = db.get(MovieModel, movie_id)
     if not movie:
-        raise HTTPException(
-            status_code=404,
-            detail="Movie with the given ID was not found.",
-        )
-    return movie
+        raise HTTPException(status_code=404, detail="Movie with the given ID was not found.")
+
+    return {
+        "id": movie.id,
+        "name": movie.name,
+        "date": movie.date,
+        "score": movie.score,
+        "genre": movie.genre,
+        "overview": movie.overview,
+        "crew": movie.crew,
+        "orig_title": movie.orig_title,
+        "status": movie.status,
+        "orig_lang": movie.orig_lang,
+        "budget": movie.budget,
+        "revenue": movie.revenue,
+        "country": movie.country,
+    }

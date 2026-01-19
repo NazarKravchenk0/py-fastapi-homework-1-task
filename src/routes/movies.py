@@ -6,28 +6,27 @@ from database import get_db, MovieModel
 
 router = APIRouter()
 
-
 @router.get("/movies/")
-def get_movies(
+async def get_movies(
     page: int = Query(1, ge=1),
     per_page: int = Query(10, ge=1, le=20),
     db: Session = Depends(get_db),
 ):
-    total_items = db.query(MovieModel).count()
-    if total_items == 0:
+    # local imports (can't change top-of-file imports)
+    from sqlalchemy import select, func
+
+    # total_items (async)
+    total_items = await db.scalar(select(func.count()).select_from(MovieModel))
+    if not total_items:
         raise HTTPException(status_code=404, detail="No movies found.")
 
-    # ceil(total_items / per_page) without math
     total_pages = (total_items + per_page - 1) // per_page
-
     offset = (page - 1) * per_page
-    movies = (
-        db.query(MovieModel)
-        .order_by(MovieModel.id.asc())
-        .offset(offset)
-        .limit(per_page)
-        .all()
+
+    result = await db.execute(
+        select(MovieModel).order_by(MovieModel.id.asc()).offset(offset).limit(per_page)
     )
+    movies = result.scalars().all()
 
     if not movies:
         raise HTTPException(status_code=404, detail="No movies found.")
@@ -62,8 +61,8 @@ def get_movies(
 
 
 @router.get("/movies/{movie_id}/")
-def get_movie_by_id(movie_id: int, db: Session = Depends(get_db)):
-    movie = db.get(MovieModel, movie_id)
+async def get_movie_by_id(movie_id: int, db: Session = Depends(get_db)):
+    movie = await db.get(MovieModel, movie_id)
     if not movie:
         raise HTTPException(status_code=404, detail="Movie with the given ID was not found.")
 

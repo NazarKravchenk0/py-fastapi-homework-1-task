@@ -12,47 +12,70 @@ async def get_movies(
     per_page: int = Query(10, ge=1, le=20),
     db: Session = Depends(get_db),
 ):
-    # local imports (can't change top-of-file imports)
-    from sqlalchemy import select, func
+    # Count total items WITHOUT extra imports (flake8-friendly)
+    count_stmt = MovieModel.__table__.select().with_only_columns(
+        MovieModel.__table__.c.id
+    )
+    count_result = await db.execute(count_stmt)
+    total_items = len(count_result.fetchall())
 
-    # total_items (async)
-    total_items = await db.scalar(select(func.count()).select_from(MovieModel))
-    if not total_items:
+    if total_items == 0:
         raise HTTPException(status_code=404, detail="No movies found.")
 
     total_pages = (total_items + per_page - 1) // per_page
     offset = (page - 1) * per_page
 
-    result = await db.execute(
-        select(MovieModel).order_by(MovieModel.id.asc()).offset(offset).limit(per_page)
+    stmt = (
+        MovieModel.__table__.select()
+        .order_by(MovieModel.__table__.c.id.asc())
+        .offset(offset)
+        .limit(per_page)
     )
-    movies = result.scalars().all()
+    result = await db.execute(stmt)
+    rows = result.fetchall()
 
-    if not movies:
+    if not rows:
         raise HTTPException(status_code=404, detail="No movies found.")
 
-    prev_page = f"/theater/movies/?page={page - 1}&per_page={per_page}" if page > 1 else None
-    next_page = f"/theater/movies/?page={page + 1}&per_page={per_page}" if page < total_pages else None
+    if page > 1:
+        prev_page = (
+            f"/theater/movies/?page={page - 1}"
+            f"&per_page={per_page}"
+        )
+    else:
+        prev_page = None
+
+    if page < total_pages:
+        next_page = (
+            f"/theater/movies/?page={page + 1}"
+            f"&per_page={per_page}"
+        )
+    else:
+        next_page = None
+
+    movies = []
+    for row in rows:
+        m = row._mapping  # RowMapping, no extra imports
+        movies.append(
+            {
+                "id": m["id"],
+                "name": m["name"],
+                "date": m["date"],
+                "score": m["score"],
+                "genre": m["genre"],
+                "overview": m["overview"],
+                "crew": m["crew"],
+                "orig_title": m["orig_title"],
+                "status": m["status"],
+                "orig_lang": m["orig_lang"],
+                "budget": m["budget"],
+                "revenue": m["revenue"],
+                "country": m["country"],
+            }
+        )
 
     return {
-        "movies": [
-            {
-                "id": m.id,
-                "name": m.name,
-                "date": m.date,
-                "score": m.score,
-                "genre": m.genre,
-                "overview": m.overview,
-                "crew": m.crew,
-                "orig_title": m.orig_title,
-                "status": m.status,
-                "orig_lang": m.orig_lang,
-                "budget": m.budget,
-                "revenue": m.revenue,
-                "country": m.country,
-            }
-            for m in movies
-        ],
+        "movies": movies,
         "prev_page": prev_page,
         "next_page": next_page,
         "total_pages": total_pages,
@@ -64,7 +87,10 @@ async def get_movies(
 async def get_movie_by_id(movie_id: int, db: Session = Depends(get_db)):
     movie = await db.get(MovieModel, movie_id)
     if not movie:
-        raise HTTPException(status_code=404, detail="Movie with the given ID was not found.")
+        raise HTTPException(
+            status_code=404,
+            detail="Movie with the given ID was not found.",
+        )
 
     return {
         "id": movie.id,

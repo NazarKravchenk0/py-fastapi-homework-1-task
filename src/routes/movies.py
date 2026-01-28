@@ -1,18 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db, MovieModel
-
+from database import MovieModel, get_db
+from schemas.movies import MovieDetailResponseSchema, MovieListResponseSchema
 
 router = APIRouter()
 
 
-@router.get("/movies/")
+@router.get("/movies/", response_model=MovieListResponseSchema)
 async def get_movies(
     page: int = Query(1, ge=1),
     per_page: int = Query(10, ge=1, le=20),
-    db: Session = Depends(get_db),
-):
+    db: AsyncSession = Depends(get_db),
+) -> dict:
     # Count total items WITHOUT extra imports (flake8-friendly)
     count_stmt = MovieModel.__table__.select().with_only_columns(
         MovieModel.__table__.c.id
@@ -39,18 +39,12 @@ async def get_movies(
         raise HTTPException(status_code=404, detail="No movies found.")
 
     if page > 1:
-        prev_page = (
-            f"/theater/movies/?page={page - 1}"
-            f"&per_page={per_page}"
-        )
+        prev_page = f"/theater/movies/?page={page - 1}&per_page={per_page}"
     else:
         prev_page = None
 
     if page < total_pages:
-        next_page = (
-            f"/theater/movies/?page={page + 1}"
-            f"&per_page={per_page}"
-        )
+        next_page = f"/theater/movies/?page={page + 1}&per_page={per_page}"
     else:
         next_page = None
 
@@ -84,8 +78,11 @@ async def get_movies(
     }
 
 
-@router.get("/movies/{movie_id}/")
-async def get_movie_by_id(movie_id: int, db: Session = Depends(get_db)):
+@router.get("/movies/{movie_id}/", response_model=MovieDetailResponseSchema)
+async def get_movie_by_id(
+    movie_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
     movie = await db.get(MovieModel, movie_id)
     if not movie:
         raise HTTPException(
